@@ -2,6 +2,7 @@ class Node:
 
     self_work: function = None
     data = None
+    id: int = None
 
     def __init__(self, self_work, data):
         """

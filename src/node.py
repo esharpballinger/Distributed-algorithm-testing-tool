@@ -2,7 +2,7 @@ class Node:
 
     self_work: function = None
     work_after_receiving: function = None
-    data = None
+    data: any = None
     id: int = None
 
     def __init__(self, self_work, data, receiving_func) -> None:
@@ -36,7 +36,7 @@ class Node:
         """
         Does work for "free" using the function pointer contained in the node
         """
-        self.self_work(self.data)
+        self.self_work(self)
 
     def change_data(self, new_data):
         self.data = new_data

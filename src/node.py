@@ -14,14 +14,15 @@ class Node:
         self.self_work = self_work
         self.data = data
         self.work_after_receiving = receiving_func
-    
-    def send_message(self, message, recipient: Node) -> None:
+        self.inbox =[]
+
+    def send_message(self, message, supervisor) -> None:
         """
         Sends a message to a recipient node
+        :param supervisor:
         :param message: the message to send
-        :param recipient: The recipient node
         """
-        recipient.receive_message(message, self)
+        supervisor.queue_message(message)
 
     def receive_message(self, message, sender) -> None:
         """
@@ -29,8 +30,7 @@ class Node:
         :param message: The recieved message
         :param sender: the node that sent the message
         """
-        self.work_after_receiving(self, message)
-        pass
+        self.inbox.append(message)
 
     def do_work(self) -> None:
         """
@@ -41,3 +41,7 @@ class Node:
     def change_data(self, new_data):
         self.data = new_data
         return self.data
+
+    def set_id(self, new_id):
+        self.id = new_id
+

@@ -1,33 +1,29 @@
+"""
+File: node.py
+Description: defines the structure of a single node in a graph
+Author: Evan Sharp-Ballinger & Gonzalo Estrella
+"""
+
 class Node:
 
-    self_work: function = None
-    work_after_receiving: function = None
-    data: any = None
-    id: int = None
-
-    def __init__(self, self_work, data, receiving_func) -> None:
+    def __init__(self, self_work, send_message, data, id=None) -> None:
         """
         Initialize self work function and the data
         :param self_work: A function pointer to the work that the node can do between rounds for free
+        :param send_message: A function pointer to send a message to another node
         :param data: The data that the node has access to
+        :param id: The id of the node
         """
         self.self_work = self_work
-        self.data = data
-        self.work_after_receiving = receiving_func
+        self.send_message = send_message
+        self.data = data  #a bunch hof relations, for a VA it is going to be just one vector
+        self.id = id
         self.inbox =[]
-
-    def send_message(self, message, supervisor) -> None:
-        """
-        Sends a message to a recipient node
-        :param supervisor:
-        :param message: the message to send
-        """
-        supervisor.queue_message(message)
 
     def receive_message(self, message, sender) -> None:
         """
-        Recieve message from another node
-        :param message: The recieved message
+        Receive message from another node and store it in the inbox
+        :param message: The received message
         :param sender: the node that sent the message
         """
         self.inbox.append(message)
@@ -37,11 +33,3 @@ class Node:
         Does work for "free" using the function pointer contained in the node
         """
         self.self_work(self)
-
-    def change_data(self, new_data):
-        self.data = new_data
-        return self.data
-
-    def set_id(self, new_id):
-        self.id = new_id
-

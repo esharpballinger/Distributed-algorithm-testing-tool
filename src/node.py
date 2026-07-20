@@ -4,9 +4,9 @@ Description: defines the structure of a single node in a graph
 Author: Evan Sharp-Ballinger & Gonzalo Estrella
 """
 
-class Node:
-
-    def __init__(self, self_work, send_message, data, id=None) -> None:
+from abc import ABC, abstractmethod
+class Node(ABC):
+    def __init__(self, data, id=None) -> None:
         """
         Initialize self work function and the data
         :param self_work: A function pointer to the work that the node can do between rounds for free
@@ -14,13 +14,11 @@ class Node:
         :param data: The data that the node has access to
         :param id: The id of the node
         """
-        self.self_work = self_work
-        self.send_message = send_message
-        self.data = data  #a bunch hof relations, for a VA it is going to be just one vector
+        self.data = data  
         self.id = id
         self.inbox =[]
 
-    def receive_message(self, message, sender) -> None:
+    def receive_message(self, message) -> None:
         """
         Receive message from another node and store it in the inbox
         :param message: The received message
@@ -28,8 +26,32 @@ class Node:
         """
         self.inbox.append(message)
 
+    @abstractmethod
+    def send_message(self, supervisor) -> None:
+        """
+        Sends message to another node (via the supervisor)
+        :param message: the message to send
+        :param recipient: the node to send the message to
+        """
+        pass
+
+    @abstractmethod
     def do_work(self) -> None:
         """
-        Does work for "free" using the function pointer contained in the node
+        Does work for "free" 
         """
-        self.self_work(self)
+        pass
+
+
+class Algorithm(ABC):
+    """
+    Abstract class that represents the overarching class for an algorithm
+    Responsible for initializing nodes and determining if the algorithm is finished running
+    """
+    @abstractmethod
+    def is_goal_met(self, nodes):
+        """
+        determines if the algorithm is done running
+        :param nodes: The list of nodes
+        """
+        

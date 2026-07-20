@@ -1,8 +1,8 @@
-from src.vector_addition import VectorAddition
+from src.vector_addition import VectorAdditionInit
 from src.supervisor import Supervisor
 
 def main():
-    va = VectorAddition()  # prompts for n, generates seed + vectors
+    va = VectorAdditionInit()  # prompts for n, generates seed + vectors
     supervisor = Supervisor(va.nodes, va)
 
     print(f"\nSeed used (save this for a reproducible run): {va.seed}")

@@ -6,12 +6,12 @@ Author: Evan Sharp-Ballinger & Gonzalo Estrella
 
 from src.node import Node
 from src.message import Message
-
+from src.node import Algorithm
 class Supervisor:
 
-    def __init__(self, nodes: list[Node], vector_addition) -> None:
+    def __init__(self, nodes: list[Node], algorithm: Algorithm) -> None:
         self.nodes = nodes
-        self.vector_addition = vector_addition
+        self.algorithm = algorithm
 
         self.round = 0
         self.messages_sent_in_round = 0
@@ -25,12 +25,12 @@ class Supervisor:
 
         #send message phase
         for node in self.nodes:
-            node.send_message(node, self)
+            node.send_message(self)
 
         #receive messages phase
         for message in self.messages_queue:
             recipient = self.nodes[message.receiver]
-            recipient.receive_message(message, message.sender)
+            recipient.receive_message(message)
 
         #computing phase
         for node in self.nodes:
@@ -41,6 +41,6 @@ class Supervisor:
         self.messages_sent_in_round = (len(self.messages_queue))
 
     def run_simulation(self) -> bool:
-        while not self.vector_addition.is_goal_met(self.nodes):
+        while not self.algorithm.is_goal_met(self.nodes):
             self.run_round()
         return True

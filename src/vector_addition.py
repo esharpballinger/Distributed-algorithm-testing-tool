@@ -8,34 +8,29 @@ Author: Evan Sharp-Ballinger & Gonzalo Estrella
 import random
 from src.node import Node
 from src.message import Message
+from src.node import Algorithm
 
+class VectorAddition(Node):
+    def do_work(self):
+        if self.inbox:
+            self.data = sum(m.payload for m in self.inbox)
+            self.inbox.clear()
 
-def vector_addition_self_work(node):
-    if node.inbox:
-        node.data = sum(m.payload for m in node.inbox)
-        node.inbox.clear()
+    def send_message(self, supervisor):
+        for i in range(len(self.data)):
+            supervisor.queue_message(Message(self.id, i, self.data[i]))
 
-def vector_addition_send_message(node, supervisor):
-    for i in range(len(node.data)):
-        supervisor.queue_message(Message(node.id, i, node.data[i]))
-
-class VectorAddition:
+class VectorAdditionInit(Algorithm):
     def __init__(self, n=None, seed=None):
         self.n = n if n is not None else int(input("Enter number of nodes in congested clique, n: "))
         self.seed = seed if seed is not None else random.randrange(2**32)
         random.seed(self.seed)
 
-        self.vectors = []
-
-        for _ in range(self.n):
-            vector = []
-            for _ in range(self.n):
-                vector.append(random.randint(0, 100))
-            self.vectors.append(vector)
+        self.vectors = [[random.randint(0,100) for _ in range(self.n)] for _ in range(self.n)]
 
         self.nodes = []
         for index in range(self.n):
-            self.nodes.append(Node(vector_addition_self_work, vector_addition_send_message, self.vectors[index], id=index))
+            self.nodes.append(VectorAddition(self.vectors[index], id=index))
 
         self.expected_sum = [sum(vector[i] for vector in self.vectors) for i in range(len(self.vectors))]
 

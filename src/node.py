@@ -1,11 +1,8 @@
-
-from collections import deque
 class Node:
 
     self_work: function = None
     work_after_receiving: function = None
     data: any = None
-    message_q: deque = None 
     id: int = None
 
     def __init__(self, self_work, data, receiving_func) -> None:
@@ -32,7 +29,7 @@ class Node:
         :param message: The recieved message
         :param sender: the node that sent the message
         """
-        self.work_after_receiving(self, message, sender)
+        self.work_after_receiving(self, message)
         pass
 
     def do_work(self) -> None:

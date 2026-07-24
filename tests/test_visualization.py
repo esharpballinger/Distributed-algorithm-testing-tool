@@ -16,7 +16,7 @@ GOOBER = str(Path(__file__).resolve().parent.parent / "src" / "goober.txt")
 
 def test_run_with_history_records_every_round():
     algorithm = GreedyMISInit(GOOBER, seed=42)
-    supervisor, history = run_with_history(algorithm)
+    supervisor, history, messages = run_with_history(algorithm)
 
     # one snapshot before the first round plus one per round
     assert len(history) == supervisor.round + 1
@@ -27,10 +27,29 @@ def test_run_with_history_records_every_round():
     assert all(len(snapshot) == algorithm.n for snapshot in history)
 
 
+def test_run_with_history_records_messages_per_round():
+    algorithm = GreedyMISInit(GOOBER, seed=42)
+    supervisor, history, messages = run_with_history(algorithm)
+
+    # one message batch per round
+    assert len(messages) == supervisor.round
+    # round 1: every node is undecided, so one rank message per directed edge
+    directed_edges = sum(len(algorithm.graph[v]) for v in algorithm.graph)
+    assert len(messages[0]) == directed_edges
+    for batch in messages:
+        for msg in batch:
+            assert set(msg) == {"from", "to", "status", "rank"}
+            assert msg["to"] in algorithm.graph[msg["from"]]
+            assert msg["status"] in {"undecided", "in_mis", "out"}
+            assert msg["rank"] == algorithm.ranks[msg["from"]]
+    # announcements appear after decisions: some in_mis message must exist in round 2
+    assert any(msg["status"] == "in_mis" for msg in messages[1])
+
+
 def test_render_html_embeds_run_data():
     algorithm = GreedyMISInit(GOOBER, seed=42)
-    _, history = run_with_history(algorithm)
-    html = render_html(algorithm, history)
+    _, history, messages = run_with_history(algorithm)
+    html = render_html(algorithm, history, messages)
 
     assert "<svg" in html
     data = json.loads(re.search(r"const RUN = (\{.*?\});", html, re.S).group(1))
@@ -41,6 +60,7 @@ def test_render_html_embeds_run_data():
     assert data["ranks"] == algorithm.ranks
     assert sorted(data["mis"]) == sorted(algorithm.expected_mis)
     assert data["checks"] == {"independent": True, "maximal": True, "matches_greedy": True}
+    assert data["messages"] == messages
     # every undirected edge appears exactly once
     edges = {tuple(sorted(e)) for e in data["edges"]}
     expected = {tuple(sorted((u, v))) for u in algorithm.graph for v in algorithm.graph[u]}
@@ -49,8 +69,8 @@ def test_render_html_embeds_run_data():
 
 def test_write_html_creates_file(tmp_path):
     algorithm = GreedyMISInit(GOOBER, seed=7)
-    _, history = run_with_history(algorithm)
+    _, history, messages = run_with_history(algorithm)
     out = tmp_path / "mis_run.html"
-    write_html(algorithm, history, str(out))
+    write_html(algorithm, history, messages, str(out))
     assert out.exists()
     assert "<svg" in out.read_text()

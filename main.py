@@ -17,14 +17,14 @@ def main(filename=DEFAULT_GRAPH, seed=None):
     print(f"\nSeed used (save this for a reproducible run): {mis.seed}")
     print(f"n = {mis.n}")
 
-    supervisor, history = run_with_history(mis)
+    supervisor, history, messages = run_with_history(mis)
 
     in_set = sorted(node.id for node in mis.nodes if node.data is Status.IN_MIS)
     print(f"\nSimulation finished in {supervisor.round} round(s).")
     print(f"Maximal independent set found: {in_set}")
     print(f"Matches sequential greedy for the same permutation: {set(in_set) == mis.expected_mis}")
 
-    write_html(mis, history, OUTPUT_HTML)
+    write_html(mis, history, messages, OUTPUT_HTML)
     path = Path(OUTPUT_HTML).resolve()
     print(f"\nRound-by-round visualization written to {path}")
     webbrowser.open(path.as_uri())

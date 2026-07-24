@@ -50,6 +50,10 @@ class Algorithm(ABC):
     """
     @abstractmethod
     def __init__(self, input_filename):
+        """
+        builds the list of nodes for the algorithm
+        :param input_filename: file describing the input (e.g. a graph)
+        """
 
     @abstractmethod
     def is_goal_met(self, nodes):
@@ -69,6 +73,6 @@ class Algorithm(ABC):
             n = int(f.readline().strip())
             graph = {i: [] for i in range(n)}
             for i, line in enumerate(f):
-                graph[i] = line.strip().split()
+                graph[i] = [int(neighbor) for neighbor in line.strip().split()]
         
         return graph

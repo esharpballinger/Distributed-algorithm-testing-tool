@@ -49,9 +49,26 @@ class Algorithm(ABC):
     Responsible for initializing nodes and determining if the algorithm is finished running
     """
     @abstractmethod
+    def __init__(self, input_filename):
+
+    @abstractmethod
     def is_goal_met(self, nodes):
         """
         determines if the algorithm is done running
         :param nodes: The list of nodes
         """
+
+    @staticmethod
+    def graph_input(filename) -> dict:
+        """
+        format for input files:
+        integer at top shows how many lines in the file
+        every line after has the neighbors of that node separated by spaces
+        """
+        with open(filename, "r") as f:
+            n = int(f.readline().strip())
+            graph = {i: [] for i in range(n)}
+            for i, line in enumerate(f):
+                graph[i] = line.strip().split()
         
+        return graph

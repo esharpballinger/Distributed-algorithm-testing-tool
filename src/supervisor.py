@@ -43,4 +43,4 @@ class Supervisor:
     def run_simulation(self) -> bool:
         while not self.algorithm.is_goal_met(self.nodes):
             self.run_round()
-        return True
+        return self.round

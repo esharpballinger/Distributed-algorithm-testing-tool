@@ -67,22 +67,23 @@ class GreedyMISInit(Algorithm):
         self.seed = seed if seed is not None else random.randrange(2**32)
         random.seed(self.seed)
 
-        raw_graph = Algorithm.graph_input(input_filename)
-        self.n = len(raw_graph)
+        if(self.input_graph is None):
+            raw_graph = Algorithm.graph_input(input_filename)
+            self.n = len(raw_graph)
 
-        # undirected problem graph: symmetrize the file's adjacency lists and drop self-loops
-        self.graph = {i: set() for i in range(self.n)}
-        for u, neighbors in raw_graph.items():
-            for v in neighbors:
-                if u != v:
-                    self.graph[u].add(v)
-                    self.graph[v].add(u)
+            # undirected problem graph: symmetrize the file's adjacency lists and drop self-loops
+            self.input_graph = {i: set() for i in range(self.n)}
+            for u, neighbors in raw_graph.items():
+                for v in neighbors:
+                    if u != v:
+                        self.input_graph[u].add(v)
+                        self.input_graph[v].add(u)
 
         # random permutation pi: ranks[v] is v's position in the greedy order
         self.ranks = random.sample(range(self.n), self.n)
 
         self.nodes = [
-            MISNode(self.ranks[index], self.graph[index], id=index)
+            MISNode(self.ranks[index], self.input_graph[index], id=index)
             for index in range(self.n)
         ]
 
@@ -95,7 +96,7 @@ class GreedyMISInit(Algorithm):
         for v in sorted(range(self.n), key=lambda v: self.ranks[v]):
             if v not in removed:
                 mis.add(v)
-                removed.update(self.graph[v])
+                removed.update(self.input_graph[v])
         return mis
 
     def is_goal_met(self, nodes) -> bool:

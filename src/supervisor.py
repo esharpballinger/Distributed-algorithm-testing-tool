@@ -9,13 +9,21 @@ from src.message import Message
 from src.node import Algorithm
 class Supervisor:
 
-    def __init__(self, nodes: list[Node], algorithm: Algorithm) -> None:
-        self.nodes = nodes
+    def __init__(self, algorithm: Algorithm) -> None:
         self.algorithm = algorithm
+        self.nodes = self.algorithm.nodes
 
         self.round = 0
         self.messages_sent_in_round = 0
         self.messages_queue = []
+
+    def reset(self):
+        self.algorithm.__init__(None)
+        self.nodes = self.algorithm.nodes
+
+        self.round = 0
+        self.messages_sent_in_round = 0
+        self.messages_queue.clear()
 
     def queue_message(self, message: Message) -> None:
         self.messages_queue.append(message)
@@ -40,7 +48,7 @@ class Supervisor:
         self.round += 1
         self.messages_sent_in_round = (len(self.messages_queue))
 
-    def run_simulation(self) -> bool:
+    def run_simulation(self) -> int:
         while not self.algorithm.is_goal_met(self.nodes):
             self.run_round()
         return self.round

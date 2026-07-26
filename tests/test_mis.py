@@ -18,7 +18,7 @@ GOOBER = str(Path(__file__).resolve().parent.parent / "src" / "goober.txt")
 
 def run_mis(filename, seed):
     algorithm = GreedyMISInit(filename, seed=seed)
-    supervisor = Supervisor(algorithm.nodes, algorithm)
+    supervisor = Supervisor(algorithm)
     supervisor.run_simulation()
     return algorithm, supervisor
 
@@ -62,7 +62,7 @@ def test_graph_input_parses_neighbor_ids_as_ints():
 
 def test_init_symmetrizes_adjacency_and_drops_self_loops():
     algorithm = GreedyMISInit(GOOBER, seed=0)
-    assert algorithm.graph == {
+    assert algorithm.input_graph == {
         0: {1, 2, 3},
         1: {0, 3, 4},
         2: {0},

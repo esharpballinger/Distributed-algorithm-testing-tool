@@ -34,12 +34,12 @@ def test_run_with_history_records_messages_per_round():
     # one message batch per round
     assert len(messages) == supervisor.round
     # round 1: every node is undecided, so one rank message per directed edge
-    directed_edges = sum(len(algorithm.graph[v]) for v in algorithm.graph)
+    directed_edges = sum(len(algorithm.input_graph[v]) for v in algorithm.input_graph)
     assert len(messages[0]) == directed_edges
     for batch in messages:
         for msg in batch:
             assert set(msg) == {"from", "to", "status", "rank"}
-            assert msg["to"] in algorithm.graph[msg["from"]]
+            assert msg["to"] in algorithm.input_graph[msg["from"]]
             assert msg["status"] in {"undecided", "in_mis", "out"}
             assert msg["rank"] == algorithm.ranks[msg["from"]]
     # announcements appear after decisions: some in_mis message must exist in round 2
@@ -63,7 +63,7 @@ def test_render_html_embeds_run_data():
     assert data["messages"] == messages
     # every undirected edge appears exactly once
     edges = {tuple(sorted(e)) for e in data["edges"]}
-    expected = {tuple(sorted((u, v))) for u in algorithm.graph for v in algorithm.graph[u]}
+    expected = {tuple(sorted((u, v))) for u in algorithm.input_graph for v in algorithm.input_graph[u]}
     assert edges == expected and len(data["edges"]) == len(expected)
 
 

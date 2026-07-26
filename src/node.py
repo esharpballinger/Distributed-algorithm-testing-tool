@@ -48,6 +48,9 @@ class Algorithm(ABC):
     Abstract class that represents the overarching class for an algorithm
     Responsible for initializing nodes and determining if the algorithm is finished running
     """
+    input_graph: dict = None
+    nodes: list[Node]
+
     @abstractmethod
     def __init__(self, input_filename):
         """

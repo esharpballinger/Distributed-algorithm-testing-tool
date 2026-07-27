@@ -4,8 +4,8 @@ Description: Top level of Congested Clique simulation tool
 Author: Evan Sharp-Ballinger
 """
 import pandas as pd
-from supervisor import *
-from node import *
+from src.supervisor import *
+from src.node import *
 
 class CCSim:
     def __init__(self, algorithm, sim_count, input_file, output_file):

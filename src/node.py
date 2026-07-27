@@ -48,10 +48,34 @@ class Algorithm(ABC):
     Abstract class that represents the overarching class for an algorithm
     Responsible for initializing nodes and determining if the algorithm is finished running
     """
+    input_graph: dict = None
+    nodes: list[Node]
+
+    @abstractmethod
+    def __init__(self, input_filename):
+        """
+        builds the list of nodes for the algorithm
+        :param input_filename: file describing the input (e.g. a graph)
+        """
+
     @abstractmethod
     def is_goal_met(self, nodes):
         """
         determines if the algorithm is done running
         :param nodes: The list of nodes
         """
+
+    @staticmethod
+    def graph_input(filename) -> dict:
+        """
+        format for input files:
+        integer at top shows how many lines in the file
+        every line after has the neighbors of that node separated by spaces
+        """
+        with open(filename, "r") as f:
+            n = int(f.readline().strip())
+            graph = {i: [] for i in range(n)}
+            for i, line in enumerate(f):
+                graph[i] = [int(neighbor) for neighbor in line.strip().split()]
         
+        return graph

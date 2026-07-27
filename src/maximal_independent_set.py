@@ -51,7 +51,7 @@ class MISNode(Node):
         
         # Phase 1 (MPC Subgraph Gathering) Variables
         self.phase_1_iteration = 1
-        self.phase_1_threshold = n / (math.log(n)**10) if n > 1 else 0
+        self.phase_1_threshold = n / (math.log2(n)**10) if n > 1 else 0
         self.current_r = self._calculate_r(self.phase_1_iteration)
         self.chunk_verdicts = {}
         
@@ -64,6 +64,9 @@ class MISNode(Node):
         # Buffer for routing
         self.forward_buffer = []
         self.final_mis_verdicts = {}
+
+        # temp ?
+        self.radius_history = []
 
     def _calculate_r(self, i):
         """Calculates the rank threshold r_i = n / \Delta^{(3/4)^i}"""
@@ -180,16 +183,30 @@ class MISNode(Node):
             
         self.phase = Phase.PHASE_1_CHUNK_BROADCAST
 
-    def _do_phase_1_chunk_broadcast(self):
-        for message in self.inbox:
-            status, verdict, _, _ = message.payload
-            if status == Status.RESULT:
-                self.data = Status(verdict)
+    # def _do_phase_1_chunk_broadcast(self):
+    #     for message in self.inbox:
+    #         status, verdict, _, _ = message.payload
+    #         if status == Status.RESULT:
+    #             self.data = Status(verdict)
                 
+    #     self.phase_1_iteration += 1
+    #     self.current_r = self._calculate_r(self.phase_1_iteration)
+        
+    #     if self.current_r >= self.phase_1_threshold or self.current_r >= self.n:
+    #         self.phase = Phase.PHASE_2_GHAFFARI
+    #     else:
+    #         self.phase = Phase.PHASE_1_CHUNK_SEND
+
+    def _do_phase_1_chunk_broadcast(self):
+        # ... message handling ...
         self.phase_1_iteration += 1
         self.current_r = self._calculate_r(self.phase_1_iteration)
         
-        if self.current_r >= self.phase_1_threshold or self.current_r >= self.n:
+        # Log the internal continuous metric
+        self.radius_history.append((self.phase_1_iteration, self.current_r))
+        
+        sparsity_threshold = self.n / math.log2(self.n) if self.n > 1 else 0
+        if self.current_r >= sparsity_threshold:
             self.phase = Phase.PHASE_2_GHAFFARI
         else:
             self.phase = Phase.PHASE_1_CHUNK_SEND

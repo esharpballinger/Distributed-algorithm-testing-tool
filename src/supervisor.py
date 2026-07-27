@@ -16,6 +16,7 @@ class Supervisor:
         self.round = 0
         self.messages_sent_in_round = 0
         self.messages_queue = []
+        self.phase_metrics = {}
 
     def reset(self):
         self.algorithm.__init__(None)
@@ -24,6 +25,7 @@ class Supervisor:
         self.round = 0
         self.messages_sent_in_round = 0
         self.messages_queue.clear()
+        self.phase_metrics.clear()
 
     def queue_message(self, message: Message) -> None:
         self.messages_queue.append(message)
@@ -50,5 +52,7 @@ class Supervisor:
 
     def run_simulation(self) -> int:
         while not self.algorithm.is_goal_met(self.nodes):
+            current_phase = self.nodes[0].phase.name
+            self.phase_metrics[current_phase] = self.phase_metrics.get(current_phase, 0) + 1
             self.run_round()
         return self.round

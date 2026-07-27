@@ -17,25 +17,20 @@ def snapshot(nodes):
 
 
 def run_with_history(algorithm):
-    """
-    Run the simulation round by round, capturing node statuses before the first
-    round and after each round, plus every message sent in each round.
-    Returns (supervisor, history, messages) where messages[k] is the list of
-    messages delivered during round k+1, each as
-    {"from": sender, "to": receiver, "status": ..., "rank": ...}.
-    """
     supervisor = Supervisor(algorithm.nodes, algorithm)
     history = [snapshot(algorithm.nodes)]
     messages = []
     while not algorithm.is_goal_met(algorithm.nodes):
         supervisor.run_round()
-        # messages_queue still holds this round's traffic after run_round
         messages.append([
             {
                 "from": m.sender,
                 "to": m.receiver,
                 "status": m.payload[0].value,
-                "rank": m.payload[1],
+                # Convert list/set payloads to string so JSON.dumps doesn't fail
+                "rank": m.payload[1] if isinstance(m.payload[1], (int, float, str)) else str(m.payload[1]),
+                "p": m.payload[2],
+                "marked": m.payload[3],
             }
             for m in supervisor.messages_queue
         ])
@@ -191,7 +186,16 @@ const NODE_COLORS = { undecided: "#9e9e9e", in_mis: "#2e9e46", out: "#e0e0e0" };
 let frame = 0, timer = null;
 
 function msgLabel(m) {
-  if (m.status === "undecided") return "\\u03c0=" + m.rank;
+  if (m.status === "undecided") {
+      if (m.p !== null) {
+          return m.marked ? "MARK (p=" + m.p.toFixed(2) + ")" : "unmarked";
+      }
+      return "\\u03c0=" + m.rank;
+  }
+  if (m.status === "topology") return "GATHER";
+  if (m.status === "degree") return "DEGREE=" + m.rank; 
+  if (m.status === "shift") return "SHIFT";
+  if (m.status === "result") return m.rank === "in_mis" ? "VERDICT: IN" : "VERDICT: OUT";
   return m.status === "in_mis" ? "IN" : "OUT";
 }
 
@@ -229,9 +233,20 @@ function drawLog(batch) {
   for (const m of batch) {
     const d = document.createElement("div");
     d.className = m.status === "undecided" ? "m-rank" : (m.status === "in_mis" ? "m-in" : "m-out");
-    const what = m.status === "undecided" ? "rank \\u03c0=" + m.rank
-               : m.status === "in_mis" ? "\\u201cI joined the MIS\\u201d"
-               : "\\u201cI\\u2019m out\\u201d";
+    
+    let what = "";
+    if (m.status === "undecided") {
+        what = m.p !== null ? "Ghaffari: marked=" + m.marked + " p=" + m.p.toFixed(2) : "rank \\u03c0=" + m.rank;
+    } else if (m.status === "in_mis") {
+        what = "\\u201cI joined the MIS\\u201d";
+    } else if (m.status === "result") {
+        what = "\\u201cFinal Verdict: " + m.rank + "\\u201d";
+    } else if (m.status === "topology" || m.status === "degree" || m.status === "shift") {
+        what = "\\u201cProtocol Msg: " + m.status + "\\u201d";
+    } else {
+        what = "\\u201cI\\u2019m out\\u201d";
+    }
+    
     d.textContent = m.from + " \\u2192 " + m.to + " : " + what;
     body.appendChild(d);
   }

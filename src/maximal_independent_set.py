@@ -27,14 +27,24 @@ class Status(Enum):
     SHIFT = "shift"
     TOPOLOGY = "topology"
     RESULT = "result"
+    NEXT_ITERATION = "next_iteration"
 
 class Phase(Enum):
-    PHASE_1_CHUNK_SEND = "phase_1_chunk_send"
-    PHASE_1_CHUNK_BROADCAST = "phase_1_chunk_broadcast"
+    # Phase 1: MPC Subgraph Gather
+    PHASE_1_COUNT = "phase_1_count"
+    PHASE_1_PREFIX = "phase_1_prefix"
+    PHASE_1_SCATTER = "phase_1_scatter"
+    PHASE_1_GATHER = "phase_1_gather"
+    
+    # Phase 2: Dynamic Probability 
     PHASE_2_GHAFFARI = "phase_2"
-    PHASE_3_ROUTE_SEND = "phase_3_route_send"
-    PHASE_3_ROUTE_FORWARD = "phase_3_route_forward"
-    PHASE_3_BROADCAST_RESULTS = "phase_3_broadcast_results"
+    
+    # Phase 3: Sparse Remainder Gather
+    PHASE_3_COUNT = "phase_3_count"
+    PHASE_3_PREFIX = "phase_3_prefix"
+    PHASE_3_SCATTER = "phase_3_scatter"
+    PHASE_3_GATHER = "phase_3_gather"
+    
     HALTED = "halted"
 
 class MISNode(Node):
@@ -47,29 +57,26 @@ class MISNode(Node):
         self.n = n
         self.delta = max(delta, 2) 
         self.leader_id = 0
-        self.phase = Phase.PHASE_1_CHUNK_SEND
+        self.phase = Phase.PHASE_1_COUNT
         
-        # Phase 1 (MPC Subgraph Gathering) Variables
+        # Phase 1/3 Routing Variables
         self.phase_1_iteration = 1
-        self.phase_1_threshold = n / (math.log2(n)**10) if n > 1 else 0
         self.current_r = self._calculate_r(self.phase_1_iteration)
+        self.forward_buffer = []
+        self.gathered_subgraph = {}
+        self.chunk_nodes = {}
+        self.saved_expected_edges = 0
+        self.edges_received = 0
+        self.ready_to_broadcast = False
         self.chunk_verdicts = {}
         
-        # Phase 2 (Ghaffari) Variables
+        # Phase 2 Variables
         self.p = 0.5 
         self.marked = (random.random() < self.p)
         self.phase_2_round = 0
         self.phase_2_max_rounds = max(3, int(math.log2(math.log2(n + 2)) * 5))
-        
-        # Buffer for routing
-        self.forward_buffer = []
-        self.final_mis_verdicts = {}
-
-        # temp ?
-        self.radius_history = []
 
     def _calculate_r(self, i):
-        """Calculates the rank threshold r_i = n / \Delta^{(3/4)^i}"""
         exponent = (0.75) ** i
         return self.n / (self.delta ** exponent)
 
@@ -83,36 +90,78 @@ class MISNode(Node):
                 supervisor.queue_message(Message(self.id, neighbor, (self.data, self.rank, None, None)))
             self.announced_decision = True
 
-        if self.phase == Phase.PHASE_1_CHUNK_SEND:
+        # --- Phase 1: O(1) Prefix-Sum Routing ---
+        if self.phase == Phase.PHASE_1_COUNT:
             if self.data is Status.UNDECIDED and self.rank < self.current_r:
-                supervisor.queue_message(Message(self.id, self.leader_id, (Status.TOPOLOGY, self.rank, list(self.active_neighbors), self.id)))
+                # FIX: Snapshot the neighbors to guarantee edge delivery matches degree promise
+                self.scatter_snapshot = list(self.active_neighbors)
+                supervisor.queue_message(Message(self.id, self.leader_id, (Status.DEGREE, len(self.scatter_snapshot), self.rank, None)))
 
-        elif self.phase == Phase.PHASE_1_CHUNK_BROADCAST:
+        elif self.phase == Phase.PHASE_1_PREFIX:
             if self.id == self.leader_id:
+                for target, shift in getattr(self, 'shifts', {}).items():
+                    supervisor.queue_message(Message(self.id, target, (Status.SHIFT, shift, None, None)))
+
+        elif self.phase == Phase.PHASE_1_SCATTER:
+            if hasattr(self, 'start_index') and hasattr(self, 'scatter_snapshot'):
+                for k, neighbor in enumerate(self.scatter_snapshot):
+                    target = (self.start_index + k) % self.n
+                    supervisor.queue_message(Message(self.id, target, (Status.TOPOLOGY, self.id, neighbor, None)))
+                del self.start_index
+                del self.scatter_snapshot
+
+        elif self.phase == Phase.PHASE_1_GATHER:
+            if self.forward_buffer:
+                u, v = self.forward_buffer.pop(0)
+                supervisor.queue_message(Message(self.id, self.leader_id, (Status.TOPOLOGY, u, v, None)))
+            
+            if self.id == self.leader_id and self.ready_to_broadcast:
                 for target_id, is_in_mis in self.chunk_verdicts.items():
                     verdict = Status.IN_MIS if is_in_mis else Status.OUT
                     supervisor.queue_message(Message(self.id, target_id, (Status.RESULT, verdict.value, None, None)))
+                for i in range(self.n):
+                    supervisor.queue_message(Message(self.id, i, (Status.NEXT_ITERATION, None, None, None)))
+                self.ready_to_broadcast = False 
 
+        # --- Phase 2: Dynamic Probability ---
         elif self.phase == Phase.PHASE_2_GHAFFARI:
             if self.data is Status.UNDECIDED:
                 for neighbor in self.active_neighbors:
                     supervisor.queue_message(Message(self.id, neighbor, (self.data, self.rank, self.p, self.marked)))
 
-        elif self.phase == Phase.PHASE_3_ROUTE_SEND:
+        # --- Phase 3: Sparse Remainder Routing ---
+        elif self.phase == Phase.PHASE_3_COUNT:
             if self.data is Status.UNDECIDED:
-                intermediate = (self.id + 1) % self.n
-                supervisor.queue_message(Message(self.id, intermediate, (Status.TOPOLOGY, self.rank, list(self.active_neighbors), self.id)))
+                # FIX: Snapshot the sparse remainder neighbors
+                self.scatter_snapshot = list(self.active_neighbors)
+                supervisor.queue_message(Message(self.id, self.leader_id, (Status.DEGREE, len(self.scatter_snapshot), self.rank, None)))
 
-        elif self.phase == Phase.PHASE_3_ROUTE_FORWARD:
-            for payload in self.forward_buffer:
-                supervisor.queue_message(Message(self.id, self.leader_id, payload))
-
-        elif self.phase == Phase.PHASE_3_BROADCAST_RESULTS:
+        elif self.phase == Phase.PHASE_3_PREFIX:
             if self.id == self.leader_id:
-                for target_id, is_in_mis in self.final_mis_verdicts.items():
-                    if target_id != self.id:
-                        verdict = Status.IN_MIS if is_in_mis else Status.OUT
-                        supervisor.queue_message(Message(self.id, target_id, (Status.RESULT, verdict.value, None, None)))
+                for target, shift in getattr(self, 'shifts', {}).items():
+                    supervisor.queue_message(Message(self.id, target, (Status.SHIFT, shift, None, None)))
+
+        elif self.phase == Phase.PHASE_3_SCATTER:
+            if hasattr(self, 'start_index') and hasattr(self, 'scatter_snapshot'):
+                for k, neighbor in enumerate(self.scatter_snapshot):
+                    target = (self.start_index + k) % self.n
+                    supervisor.queue_message(Message(self.id, target, (Status.TOPOLOGY, self.id, neighbor, None)))
+                del self.start_index
+                del self.scatter_snapshot
+
+        elif self.phase == Phase.PHASE_3_GATHER:
+            if self.forward_buffer:
+                u, v = self.forward_buffer.pop(0)
+                supervisor.queue_message(Message(self.id, self.leader_id, (Status.TOPOLOGY, u, v, None)))
+            
+            if self.id == self.leader_id and self.ready_to_broadcast:
+                for target_id, is_in_mis in self.chunk_verdicts.items():
+                    verdict = Status.IN_MIS if is_in_mis else Status.OUT
+                    supervisor.queue_message(Message(self.id, target_id, (Status.RESULT, verdict.value, None, None)))
+                for i in range(self.n):
+                    supervisor.queue_message(Message(self.id, i, (Status.NEXT_ITERATION, None, None, None)))
+                self.ready_to_broadcast = False 
+
 
     def do_work(self):
         if self.phase == Phase.HALTED:
@@ -121,18 +170,26 @@ class MISNode(Node):
 
         self._process_removals()
 
-        if self.phase == Phase.PHASE_1_CHUNK_SEND:
-            self._do_phase_1_chunk_send()
-        elif self.phase == Phase.PHASE_1_CHUNK_BROADCAST:
-            self._do_phase_1_chunk_broadcast()
+        if self.phase == Phase.PHASE_1_COUNT:
+            self._do_count_phase(Phase.PHASE_1_PREFIX)
+        elif self.phase == Phase.PHASE_1_PREFIX:
+            self._do_prefix_phase(Phase.PHASE_1_SCATTER)
+        elif self.phase == Phase.PHASE_1_SCATTER:
+            self._do_scatter_phase(Phase.PHASE_1_GATHER)
+        elif self.phase == Phase.PHASE_1_GATHER:
+            self._do_phase_1_gather()
+            
         elif self.phase == Phase.PHASE_2_GHAFFARI:
             self._do_phase_2()
-        elif self.phase == Phase.PHASE_3_ROUTE_SEND:
-            self._do_phase_3_route_send()
-        elif self.phase == Phase.PHASE_3_ROUTE_FORWARD:
-            self._do_phase_3_route_forward()
-        elif self.phase == Phase.PHASE_3_BROADCAST_RESULTS:
-            self._do_phase_3_broadcast_results()
+            
+        elif self.phase == Phase.PHASE_3_COUNT:
+            self._do_count_phase(Phase.PHASE_3_PREFIX)
+        elif self.phase == Phase.PHASE_3_PREFIX:
+            self._do_prefix_phase(Phase.PHASE_3_SCATTER)
+        elif self.phase == Phase.PHASE_3_SCATTER:
+            self._do_scatter_phase(Phase.PHASE_3_GATHER)
+        elif self.phase == Phase.PHASE_3_GATHER:
+            self._do_phase_3_gather()
             
         self.inbox.clear()
 
@@ -150,72 +207,109 @@ class MISNode(Node):
                 new_inbox.append(message)
         self.inbox = new_inbox
 
-    def _do_phase_1_chunk_send(self):
-        self.chunk_verdicts = {}
+    def _do_count_phase(self, next_phase):
         if self.id == self.leader_id:
-            subgraph = {}
-            ranks = {}
-            
-            if self.data is Status.UNDECIDED and self.rank < self.current_r:
-                subgraph[self.id] = self.active_neighbors
-                ranks[self.id] = self.rank
-                
-            for message in self.inbox:
-                status, rank, neighbors, orig_sender = message.payload
-                if status == Status.TOPOLOGY:
-                    subgraph[orig_sender] = set(neighbors)
-                    ranks[orig_sender] = rank
-                    
-            sorted_nodes = sorted(subgraph.keys(), key=lambda x: ranks[x]) 
-            mis = set()
-            removed = set()
-            for v in sorted_nodes:
-                if v not in removed:
-                    mis.add(v)
-                    removed.update(subgraph[v].intersection(subgraph.keys()))
-                    
-            if self.id in mis:
-                self.data = Status.IN_MIS
-            elif self.id in subgraph:
-                self.data = Status.OUT
-                
-            self.chunk_verdicts = {v: (v in mis) for v in sorted_nodes}
-            
-        self.phase = Phase.PHASE_1_CHUNK_BROADCAST
+            self.shifts = {}
+            self.chunk_nodes = {}
+            total_edges = 0
+            for msg in self.inbox:
+                if msg.payload[0] == Status.DEGREE:
+                    degree, rank = msg.payload[1], msg.payload[2]
+                    self.shifts[msg.sender] = total_edges
+                    self.chunk_nodes[msg.sender] = rank
+                    total_edges += degree
+            self.saved_expected_edges = total_edges
+        self.phase = next_phase
 
-    # def _do_phase_1_chunk_broadcast(self):
-    #     for message in self.inbox:
-    #         status, verdict, _, _ = message.payload
-    #         if status == Status.RESULT:
-    #             self.data = Status(verdict)
-                
-    #     self.phase_1_iteration += 1
-    #     self.current_r = self._calculate_r(self.phase_1_iteration)
-        
-    #     if self.current_r >= self.phase_1_threshold or self.current_r >= self.n:
-    #         self.phase = Phase.PHASE_2_GHAFFARI
-    #     else:
-    #         self.phase = Phase.PHASE_1_CHUNK_SEND
+    def _do_prefix_phase(self, next_phase):
+        for msg in self.inbox:
+            if msg.payload[0] == Status.SHIFT:
+                self.start_index = msg.payload[1]
+        self.phase = next_phase
 
-    def _do_phase_1_chunk_broadcast(self):
-        # ... message handling ...
-        self.phase_1_iteration += 1
-        self.current_r = self._calculate_r(self.phase_1_iteration)
+    def _do_scatter_phase(self, next_phase):
+        for msg in self.inbox:
+            if msg.payload[0] == Status.TOPOLOGY:
+                self.forward_buffer.append((msg.payload[1], msg.payload[2]))
         
-        # Log the internal continuous metric
-        self.radius_history.append((self.phase_1_iteration, self.current_r))
+        if self.id == self.leader_id:
+            self.gathered_subgraph = {}
+            self.edges_received = 0
+            self.chunk_verdicts = {}
+            self.ready_to_broadcast = False
+            
+            if self.edges_received == self.saved_expected_edges:
+                self._compute_chunk_mis()
+                
+        self.phase = next_phase
+
+    def _do_phase_1_gather(self):
+        self._process_gather_inbox()
+
+        advance = False
+        for msg in self.inbox:
+            if msg.payload[0] == Status.RESULT:
+                if self.data == Status.UNDECIDED:
+                    self.data = Status(msg.payload[1])
+            elif msg.payload[0] == Status.NEXT_ITERATION:
+                advance = True
         
-        sparsity_threshold = self.n / math.log2(self.n) if self.n > 1 else 0
-        if self.current_r >= sparsity_threshold:
-            self.phase = Phase.PHASE_2_GHAFFARI
-        else:
-            self.phase = Phase.PHASE_1_CHUNK_SEND
+        if advance:
+            self.phase_1_iteration += 1
+            self.current_r = self._calculate_r(self.phase_1_iteration)
+            # sparsity_threshold = self.n / math.log2(self.n) if self.n > 1 else 0 
+            sparsity_threshold = self.n / math.log2(self.n)**4 if self.n > 1 else 0 
+            if self.current_r >= sparsity_threshold:
+                self.phase = Phase.PHASE_2_GHAFFARI
+            else:
+                self.phase = Phase.PHASE_1_COUNT
+
+    def _do_phase_3_gather(self):
+        self._process_gather_inbox()
+
+        advance = False
+        for msg in self.inbox:
+            if msg.payload[0] == Status.RESULT:
+                if self.data == Status.UNDECIDED:
+                    self.data = Status(msg.payload[1])
+            elif msg.payload[0] == Status.NEXT_ITERATION:
+                advance = True
+        
+        if advance:
+            self.phase = Phase.HALTED
+
+    def _process_gather_inbox(self):
+        if self.id == self.leader_id:
+            for msg in self.inbox:
+                if msg.payload[0] == Status.TOPOLOGY:
+                    u, v = msg.payload[1], msg.payload[2]
+                    if u not in self.gathered_subgraph:
+                        self.gathered_subgraph[u] = set()
+                    self.gathered_subgraph[u].add(v)
+                    self.edges_received += 1
+            
+            if self.edges_received == self.saved_expected_edges and not self.ready_to_broadcast:
+                self._compute_chunk_mis()
+
+    def _compute_chunk_mis(self):
+        sorted_nodes = sorted(self.chunk_nodes.keys(), key=lambda x: self.chunk_nodes[x]) 
+        mis = set()
+        removed = set()
+        for v in sorted_nodes:
+            if v not in removed:
+                mis.add(v)
+                removed.add(v)
+                if v in self.gathered_subgraph:
+                    removed.update(self.gathered_subgraph[v])
+                
+        self.chunk_verdicts = {v: (v in mis) for v in sorted_nodes}
+        self.ready_to_broadcast = True
 
     def _do_phase_2(self):
         if self.data is not Status.UNDECIDED:
             self.phase_2_round += 1
             if self.phase_2_round >= self.phase_2_max_rounds:
-                self.phase = Phase.PHASE_3_ROUTE_SEND
+                self.phase = Phase.PHASE_3_COUNT
             return
             
         active_neighbors_p_sum = 0
@@ -240,61 +334,13 @@ class MISNode(Node):
         
         self.phase_2_round += 1
         if self.phase_2_round >= self.phase_2_max_rounds:
-            self.phase = Phase.PHASE_3_ROUTE_SEND
-
-    def _do_phase_3_route_send(self):
-        self.forward_buffer.clear()
-        for msg in self.inbox:
-            if msg.payload[0] == Status.TOPOLOGY:
-                self.forward_buffer.append(msg.payload)
-        self.phase = Phase.PHASE_3_ROUTE_FORWARD
-
-    def _do_phase_3_route_forward(self):
-        if self.id == self.leader_id:
-            subgraph = {}
-            ranks = {}
-            
-            if self.data is Status.UNDECIDED:
-                subgraph[self.id] = self.active_neighbors
-                ranks[self.id] = self.rank
-                
-            for message in self.inbox:
-                status, rank, neighbors, orig_sender = message.payload
-                if status == Status.TOPOLOGY:
-                    subgraph[orig_sender] = set(neighbors)
-                    ranks[orig_sender] = rank
-                    
-            sorted_nodes = sorted(subgraph.keys(), key=lambda x: ranks[x]) 
-            mis = set()
-            removed = set()
-            for v in sorted_nodes:
-                if v not in removed:
-                    mis.add(v)
-                    removed.update(subgraph[v])
-                    
-            if self.id in mis:
-                self.data = Status.IN_MIS
-            elif self.id in subgraph:
-                self.data = Status.OUT
-                
-            self.final_mis_verdicts = {v: (v in mis) for v in sorted_nodes}
-            
-        self.phase = Phase.PHASE_3_BROADCAST_RESULTS
-
-    def _do_phase_3_broadcast_results(self):
-        for message in self.inbox:
-            status, verdict, _, _ = message.payload
-            if status == Status.RESULT:
-                self.data = Status(verdict)
-        self.phase = Phase.HALTED
-
+            self.phase = Phase.PHASE_3_COUNT
 
 class GreedyMISInit(Algorithm):
     def __init__(self, input_filename, seed=None):
         self.seed = seed if seed is not None else random.randrange(2**32)
         random.seed(self.seed)
         
-        # Only read from the file if the graph hasn't been cached yet
         if self.input_graph is None:
             raw_graph = Algorithm.graph_input(input_filename)
             self.n = len(raw_graph)
@@ -305,7 +351,6 @@ class GreedyMISInit(Algorithm):
                         self.input_graph[u].add(v)
                         self.input_graph[v].add(u)
         
-        # Calculate delta unconditionally using the cached graph
         delta = 0
         if self.input_graph:
             delta = max(len(neighbors) for neighbors in self.input_graph.values())
@@ -316,16 +361,6 @@ class GreedyMISInit(Algorithm):
             MISNode(self.ranks[index], self.input_graph[index], self.n, delta, id=index)
             for index in range(self.n)
         ]
-        self.expected_mis = self._sequential_greedy_mis()
-
-    def _sequential_greedy_mis(self):
-        mis = set()
-        removed = set()
-        for v in sorted(range(self.n), key=lambda v: self.ranks[v]):
-            if v not in removed:
-                mis.add(v)
-                removed.update(self.input_graph[v])
-        return mis
 
     def is_goal_met(self, nodes) -> bool:
         return all(node.data is not Status.UNDECIDED for node in nodes)

@@ -7,6 +7,7 @@ Author: Evan Sharp-Ballinger & Gonzalo Estrella
 from src.node import Node
 from src.message import Message
 from src.node import Algorithm
+
 class Supervisor:
 
     def __init__(self, algorithm: Algorithm) -> None:
@@ -15,6 +16,7 @@ class Supervisor:
 
         self.round = 0
         self.messages_sent_in_round = 0
+        self.total_messages_sent = 0  # NEW: Tracks total message volume
         self.messages_queue = []
         self.phase_metrics = {}
 
@@ -24,6 +26,7 @@ class Supervisor:
 
         self.round = 0
         self.messages_sent_in_round = 0
+        self.total_messages_sent = 0  # NEW: Reset total volume for new sim runs
         self.messages_queue.clear()
         self.phase_metrics.clear()
 
@@ -33,22 +36,23 @@ class Supervisor:
     def run_round(self) -> None:
         self.messages_queue = []
 
-        #send message phase
+        # send message phase
         for node in self.nodes:
             node.send_message(self)
 
-        #receive messages phase
+        # receive messages phase
         for message in self.messages_queue:
             recipient = self.nodes[message.receiver]
             recipient.receive_message(message)
 
-        #computing phase
+        # computing phase
         for node in self.nodes:
             node.do_work()
 
-        #a round passes
+        # a round passes
         self.round += 1
-        self.messages_sent_in_round = (len(self.messages_queue))
+        self.messages_sent_in_round = len(self.messages_queue)
+        self.total_messages_sent += self.messages_sent_in_round  # NEW: Accumulate messages
 
     def run_simulation(self) -> int:
         while not self.algorithm.is_goal_met(self.nodes):

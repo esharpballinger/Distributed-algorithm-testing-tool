@@ -1,5 +1,9 @@
-import node
+from math import log2
 
 if __name__ == "__main__":
-    goober = node.Algorithm.graph_input("src/goober.txt")
-    print(goober)
+    with open('src/graph_kmw_1000.txt') as f:
+        n = int(f.readline())
+        kmw_degree = max([len(f.readline().strip().split()) for _ in range(n)])
+    print(kmw_degree)
+    print(log2(log2(kmw_degree)))
+    

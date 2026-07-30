@@ -11,7 +11,7 @@ from pathlib import Path
 from src.maximal_independent_set import GreedyMISInit, Status
 from src.mis_visualization import run_with_history, render_html, write_html
 
-GOOBER = str(Path(__file__).resolve().parent.parent / "src" / "goober.txt")
+GOOBER = str("goober.txt") #Path(__file__).resolve().parent.parent / "src" / 
 
 
 def test_run_with_history_records_every_round():

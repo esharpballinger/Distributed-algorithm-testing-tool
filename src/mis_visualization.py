@@ -17,7 +17,8 @@ def snapshot(nodes):
 
 
 def run_with_history(algorithm):
-    supervisor = Supervisor(algorithm.nodes, algorithm)
+    # FIXED: Supervisor only accepts the algorithm object
+    supervisor = Supervisor(algorithm)
     history = [snapshot(algorithm.nodes)]
     messages = []
     while not algorithm.is_goal_met(algorithm.nodes):
@@ -39,20 +40,33 @@ def run_with_history(algorithm):
 
 
 def _checks(algorithm):
+    # FIXED: Safely fetch the input_graph attribute
+    graph = getattr(algorithm, 'input_graph', getattr(algorithm, 'graph', {}))
+    
     in_set = {node.id for node in algorithm.nodes if node.data is Status.IN_MIS}
-    independent = all(not (algorithm.graph[v] & in_set) for v in in_set)
+    independent = all(not (graph[v] & in_set) for v in in_set)
     maximal = all(
-        algorithm.graph[v] & in_set for v in range(algorithm.n) if v not in in_set
+        graph[v] & in_set for v in range(algorithm.n) if v not in in_set
     )
+    
+    # FIXED: Compute the expected MIS to compare against the greedy sequential approach
+    expected_mis = set()
+    sorted_nodes = sorted(range(algorithm.n), key=lambda x: algorithm.ranks[x])
+    for node in sorted_nodes:
+        if not any(neighbor in expected_mis for neighbor in graph[node]):
+            expected_mis.add(node)
+            
     return in_set, {
         "independent": independent,
         "maximal": maximal,
-        "matches_greedy": in_set == algorithm.expected_mis,
+        "matches_greedy": in_set == expected_mis,
     }
 
 
 def render_html(algorithm, history, messages) -> str:
     in_set, checks = _checks(algorithm)
+    graph = getattr(algorithm, 'input_graph', getattr(algorithm, 'graph', {}))
+    
     run = {
         "n": algorithm.n,
         "seed": algorithm.seed,
@@ -61,7 +75,7 @@ def render_html(algorithm, history, messages) -> str:
         "messages": messages,
         "ranks": algorithm.ranks,
         "edges": sorted(
-            [u, v] for u in algorithm.graph for v in algorithm.graph[u] if u < v
+            [u, v] for u in graph for v in graph[u] if u < v
         ),
         "mis": sorted(in_set),
         "checks": checks,
